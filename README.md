@@ -1,5 +1,5 @@
 
-![Build Status](https://github.com/${{github.repository}}/actions/workflows/build.yml/badge.svg)
+![Build Status](https://github.com/SPS-SIPS/p-monitoring/actions/workflows/build.yml/badge.svg)
 
 ## Features
 
