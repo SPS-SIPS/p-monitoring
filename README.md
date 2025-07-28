@@ -1,3 +1,6 @@
+
+![Build Status](https://github.com/${{github.repository}}/actions/workflows/build.yml/badge.svg)
+
 ## Features
 
 - **Flexible health checks:** Monitors any number of HTTP endpoints, each representing a component or service.
