@@ -1,0 +1,14 @@
+[Unit]
+Description=Participant Monitor Service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/participant-monitor
+ExecStart=/opt/participant-monitor/participant-monitor -config=/opt/participant-monitor/config.json
+Restart=on-failure
+User=participant
+Group=participant
+
+[Install]
+WantedBy=multi-user.target

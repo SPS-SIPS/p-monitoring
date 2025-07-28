@@ -1,0 +1,16 @@
+{
+    "components": [
+        {
+            "name": "zitadel",
+            "endpoint": "http://localhost:8080/debug/healthz"
+        },
+        {
+            "name": "minio",
+            "endpoint": "http://localhost:9000/minio/health/live"
+        }
+    ],
+    "check_interval_seconds": 30,
+    "log_directory": "logs",
+    "log_retention_days": 7,
+    "listen_address": ":8081"
+}

@@ -1,0 +1,31 @@
+# Binaries
+participant-monitor
+participant-monitor.exe
+/dist/
+
+# Logs
+logs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE/editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Dependency directories
+vendor/
+
+# Test output
+*.out
+
+# Go build cache
+*.test
+
+# GitHub Actions artifacts
+*.zip
+*.tar.gz
