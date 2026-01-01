@@ -40,6 +40,7 @@ type HealthComponent struct {
 type HealthResponse struct {
 	Status     string            `json:"status"`
 	Components []HealthComponent `json:"components"`
+	Timestamp  string            `json:"timestamp"`
 }
 
 // In-memory status for components
@@ -197,6 +198,7 @@ func startHTTPServer(statusMap *StatusMap, addr string, logger *log.Logger) {
 		resp := HealthResponse{
 			Status:     status,
 			Components: components,
+			Timestamp:  time.Now().UTC().Format(time.RFC3339),
 		}
 		json.NewEncoder(w).Encode(resp)
 	})

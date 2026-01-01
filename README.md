@@ -97,7 +97,8 @@ Example response:
       "http_result": "200 OK",
       "last_checked": "2025-07-28T12:34:56Z"
     }
-  ]
+  ],
+  "timestamp": "2025-07-28T12:34:56Z"
 }
 ```
 
