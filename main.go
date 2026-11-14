@@ -72,9 +72,9 @@ func (s *StatusMap) GetAll() []HealthComponent {
 // Logging
 
 func setupLogger(logDir string) *log.Logger {
-	os.MkdirAll(logDir, 0755)
+	os.MkdirAll(logDir, 0700)
 	logFile := filepath.Join(logDir, time.Now().Format("2006-01-02")+".log")
-	f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		log.Fatalf("Failed to open log file: %v", err)
 	}
@@ -203,7 +203,9 @@ func startHTTPServer(statusMap *StatusMap, addr string, logger *log.Logger) {
 		json.NewEncoder(w).Encode(resp)
 	})
 	logger.Printf("HTTP server listening on %s", addr)
-	log.Fatal(http.ListenAndServe(addr, nil))
+	server := &http.Server{Addr: addr, Handler: http.DefaultServeMux, ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 * 1024}
+	log.Fatal(server.ListenAndServe())
 }
 
 // Log retention cleanup
