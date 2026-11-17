@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -66,24 +67,7 @@ func TestHealthEndpoint(t *testing.T) {
 	req := httptest.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
 
-	// Directly test the handler logic
-	handler := func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		components := statusMap.GetAll()
-		status := "ok"
-		for _, c := range components {
-			if c.Status != "ok" {
-				status = "degraded"
-				break
-			}
-		}
-		resp := HealthResponse{
-			Status:     status,
-			Components: components,
-		}
-		json.NewEncoder(w).Encode(resp)
-	}
-	handler(w, req)
+	healthHandler(statusMap, "").ServeHTTP(w, req)
 	resp := w.Result()
 	if resp.StatusCode != 200 {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
@@ -93,15 +77,41 @@ func TestHealthEndpoint(t *testing.T) {
 	if hr.Status != "ok" {
 		t.Errorf("expected status ok, got %s", hr.Status)
 	}
-	if len(hr.Components) != 2 {
-		t.Errorf("expected 2 components, got %d", len(hr.Components))
+	if len(hr.Components) != 0 {
+		t.Fatal("public health must not disclose components")
 	}
-	for _, c := range hr.Components {
-		if c.EndpointStatus != "ok" {
-			t.Errorf("expected endpoint_status ok, got %s", c.EndpointStatus)
+}
+
+func TestDiagnosticsAuthorization(t *testing.T) {
+	status := NewStatusMap()
+	status.Components["internal-db"] = HealthComponent{Name: "internal-db", Status: "ok", Error: "private diagnostic"}
+	token := strings.Repeat("s", 32)
+	for _, tc := range []struct {
+		configured, supplied string
+		code                 int
+	}{
+		{"", "", 503}, {token, "", 401}, {token, "Bearer wrong", 401}, {token, "Bearer " + token, 200},
+	} {
+		request := httptest.NewRequest("GET", "/diagnostics", nil)
+		request.Header.Set("Authorization", tc.supplied)
+		response := httptest.NewRecorder()
+		healthHandler(status, tc.configured).ServeHTTP(response, request)
+		if response.Code != tc.code {
+			t.Fatalf("got %d, want %d", response.Code, tc.code)
 		}
-		if c.HTTPResult != "200 OK" {
-			t.Errorf("expected http_result 200 OK, got %s", c.HTTPResult)
+		if tc.code != 200 && strings.Contains(response.Body.String(), "internal-db") {
+			t.Fatal("anonymous diagnostic disclosure")
+		}
+		if tc.code == 200 && !strings.Contains(response.Body.String(), "internal-db") {
+			t.Fatal("authorized diagnostic missing")
+		}
+	}
+}
+
+func TestNonLoopbackListenerRequiresTLS(t *testing.T) {
+	for _, address := range []string{":8080", "0.0.0.0:8080", "[::]:8080", "localhost:8080"} {
+		if err := serveHealth(&http.Server{Addr: address}, "", ""); err == nil {
+			t.Fatalf("accepted insecure listener %s", address)
 		}
 	}
 }

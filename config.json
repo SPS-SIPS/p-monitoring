@@ -12,5 +12,5 @@
     "check_interval_seconds": 30,
     "log_directory": "logs",
     "log_retention_days": 7,
-    "listen_address": ":8081"
+    "listen_address": "127.0.0.1:8081"
 }

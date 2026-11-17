@@ -1,10 +1,14 @@
 package main
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -184,28 +188,77 @@ func startHealthChecks(cfg *AppConfig, statusMap *StatusMap, logger *log.Logger)
 }
 
 // HTTP server with /health endpoint
-func startHTTPServer(statusMap *StatusMap, addr string, logger *log.Logger) {
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+func overallStatus(components []HealthComponent) string {
+	for _, c := range components {
+		if c.Status != "ok" {
+			return "degraded"
+		}
+	}
+	return "ok"
+}
+
+func healthHandler(statusMap *StatusMap, token string) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		status := overallStatus(statusMap.GetAll())
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		json.NewEncoder(w).Encode(map[string]string{"status": status})
+	})
+	mux.HandleFunc("/diagnostics", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if len(token) < 32 {
+			http.Error(w, "Diagnostics are not configured", http.StatusServiceUnavailable)
+			return
+		}
+		expected := sha256.Sum256([]byte("Bearer " + token))
+		actual := sha256.Sum256([]byte(r.Header.Get("Authorization")))
+		if subtle.ConstantTimeCompare(expected[:], actual[:]) != 1 {
+			w.Header().Set("WWW-Authenticate", "Bearer")
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		components := statusMap.GetAll()
-		status := "ok"
-		for _, c := range components {
-			if c.Status != "ok" {
-				status = "degraded"
-				break
-			}
-		}
-		resp := HealthResponse{
-			Status:     status,
-			Components: components,
-			Timestamp:  time.Now().UTC().Format(time.RFC3339),
-		}
-		json.NewEncoder(w).Encode(resp)
+		json.NewEncoder(w).Encode(HealthResponse{Status: overallStatus(components), Components: components, Timestamp: time.Now().UTC().Format(time.RFC3339)})
 	})
-	logger.Printf("HTTP server listening on %s", addr)
-	server := &http.Server{Addr: addr, Handler: http.DefaultServeMux, ReadHeaderTimeout: 5 * time.Second,
+	return mux
+}
+
+func serveHealth(server *http.Server, cert, key string) error {
+	host, _, err := net.SplitHostPort(server.Addr)
+	if err != nil {
+		return err
+	}
+	ip := net.ParseIP(host)
+	loopback := ip != nil && ip.IsLoopback()
+	if (cert == "") != (key == "") {
+		return fmt.Errorf("both TLS_CERT_FILE and TLS_KEY_FILE are required")
+	}
+	if cert != "" {
+		return server.ListenAndServeTLS(cert, key)
+	}
+	if !loopback {
+		return fmt.Errorf("non-loopback listeners require TLS_CERT_FILE and TLS_KEY_FILE")
+	}
+	return server.ListenAndServe()
+}
+
+func startHTTPServer(statusMap *StatusMap, addr string, logger *log.Logger) {
+	server := &http.Server{Addr: addr, Handler: healthHandler(statusMap, os.Getenv("STATUS_API_TOKEN")), ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 * 1024}
-	log.Fatal(server.ListenAndServe())
+	logger.Printf("HTTP server listening on %s", addr)
+	log.Fatal(serveHealth(server, os.Getenv("TLS_CERT_FILE"), os.Getenv("TLS_KEY_FILE")))
 }
 
 // Log retention cleanup
@@ -243,7 +296,7 @@ func main() {
 	startHealthChecks(cfg, statusMap, logger)
 	addr := cfg.ListenAddress
 	if addr == "" {
-		addr = ":8080"
+		addr = "127.0.0.1:8080"
 	}
 	startHTTPServer(statusMap, addr, logger)
 }
